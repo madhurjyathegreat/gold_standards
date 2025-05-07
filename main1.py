@@ -5,6 +5,8 @@ from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import LLMChain
+from fpdf import FPDF
+import html
 
 # === Constants and Config ===
 os.environ["GROQ_API_KEY"] = "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"
@@ -24,6 +26,9 @@ if "memory" not in st.session_state:
 
 if "knowledge_base" not in st.session_state:
     st.session_state.knowledge_base = ""
+
+if "pdf_content" not in st.session_state:
+    st.session_state.pdf_content = {}
 
 # === Helper Classes ===
 class PDFExtractor:
@@ -48,6 +53,34 @@ class SectionSplitter:
             elif current_section:
                 sections[current_section] += line.strip() + " "
         return sections
+
+# === PDF Writer Function ===
+def generate_pdf(content_dict):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, "HR Policy Comparison Report", ln=True, align="C")
+    pdf.ln(10)
+
+    for section_title, section_text in content_dict.items():
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, section_title, ln=True)
+        pdf.ln(2)
+        pdf.set_font("Arial", size=12)
+        sanitized = html.unescape(section_text)
+        ascii_text = sanitized.encode("latin-1", errors="ignore").decode("latin-1")
+        lines = ascii_text.split("\n")
+        for line in lines:
+            clean_line = line.strip("\n ")
+            if clean_line:
+                pdf.multi_cell(0, 10, clean_line)
+        pdf.ln(5)
+
+    output_path = "HR_Policy_Comparison_Report.pdf"
+    pdf.output(output_path)
+    return output_path
 
 # === Cached Agent Functions ===
 @st.cache_data(show_spinner=False)
@@ -147,6 +180,15 @@ if nbs_file and vm_file:
                 """
                 st.markdown(section_output)
                 st.session_state.knowledge_base += section_output + "\n"
+                # Store content for PDF generation
+                if "pdf_content" not in st.session_state:
+                    st.session_state.pdf_content = {}
+                st.session_state.pdf_content[section] = section_output
+
+    if st.button("📥 Download Comparison Report as PDF"):
+        pdf_path = generate_pdf(st.session_state.pdf_content)
+        with open(pdf_path, "rb") as f:
+            st.download_button("Download PDF", f, file_name=pdf_path, mime="application/pdf")
 
 # === Chatbot Section ===
 st.subheader("💬 Ask Your HR Assistant")
